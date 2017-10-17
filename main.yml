@@ -1,0 +1,4 @@
+---
+- include: k8s-master.yml
+- include: k8s-node.yml
+#- include: autoshift.yml

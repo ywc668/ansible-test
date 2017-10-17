@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: autoremediator
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 80
+    nodePort: 30033
+    protocol: TCP
+    name: cloud9
+  - port: 8086
+    targetPort: 8086
+    nodePort: 30186
+    protocol: TCP
+    name: autoremediator-pod
+  selector:
+    name: autoremediator-pod
+---
+
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: autoremediator
+spec:
+  replicas: 1
+  selector:
+    name: autoremediator-pod
+  template:
+    metadata:
+      name: autoremediator-pod
+      labels:
+        name: autoremediator-pod
+    spec:
+      restartPolicy: Always
+      imagePullSecrets:
+      - name: "myregistry"
+      nodeSelector:
+        stack: autoshift
+      containers:
+      - name: autoremediator
+        #image: 117.78.33.214/autoshift/pyide-xgboost:latest
+        image: masterid/mlcloud9ide:latest
+        env:
+        - name: "ACCESS_KEY"
+          value: "AE1B1463F8D4D2BEC51A"
+        - name: "SECRET_KEY"
+          value: "5reBcpvu29bGWGRsmf89uMg3EbwVUSCVQ2ZwjMt1"
+        ports:
+        - containerPort: 80
+        - containerPort: 8086
+        imagePullPolicy: "Always"
+        volumeMounts:
+        - mountPath: /workspace/
+          name: code
+      volumes:
+        - name: code
+          hostPath:
+            path: /autoshift-autoremediator

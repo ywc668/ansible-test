@@ -1,0 +1,453 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: autoshift
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: autoshift
+spec:
+  type: NodePort
+  ports:
+#  - port: 8080
+#    targetPort: 80
+#    nodePort: 30030
+#    protocol: TCP
+#    name: cloud9 
+
+  - port: 9000
+    targetPort: 9000
+    protocol: TCP
+    name: api
+
+  selector:
+    name: api-pod
+  #type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: autoshift
+spec:
+  type: NodePort
+  ports:
+#  - port: 80
+#    targetPort: 80
+#    nodePort: 30031
+#    protocol: TCP
+#    name: cloud9
+
+  - port: 80
+    targetPort: 5000
+    nodePort: 30500
+    protocol: TCP
+    name: web
+  selector:
+    name: web-pod
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: api
+  namespace: autoshift
+spec:
+  replicas: 1
+  selector:
+    name: api-pod
+  template:
+    metadata:
+      name: api-pod
+      labels:
+        name: api-pod
+    spec:
+      restartPolicy: Always
+      containers:
+      - name: api
+        image: 10.119.63.231:5002/autoshift/autoshift-api:latest
+        env:
+        - name: "PROVIDER"
+          value: "kubenetes"
+        - name: "RANCHER_ACCESS_KEY"
+          value: "AE1B1463F8D4D2BEC51A"
+        - name: "RANCHER_SECRET_KEY"
+          value: "5reBcpvu29bGWGRsmf89uMg3EbwVUSCVQ2ZwjMt1"
+        ports:
+        - containerPort: 80
+#          hostPort: 30030
+        - containerPort: 9000
+        imagePullPolicy: "Always"
+        volumeMounts:
+        - mountPath: /workspace/ 
+          name: code
+      nodeSelector:
+        stack: autoshift
+      volumes:
+        - name: code
+          hostPath:
+            path: /autoshift-api
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: web
+  namespace: autoshift
+spec:
+  replicas: 1
+  selector:
+    name: web-pod
+  template:
+    metadata:
+      name: web-pod
+      labels:
+        name: web-pod
+    spec:
+#      hostNetwork: true
+      restartPolicy: Always
+      nodeSelector:
+        stack: autoshift
+      containers:
+      - name: web
+        image: 10.119.63.231:5002/autoshift/autoshift-web:latest
+        env:
+        - name: "RANCHER_ACCESS_KEY"
+          value: "AE1B1463F8D4D2BEC51A"
+        - name: "RANCHER_SECRET_KEY"
+          value: "5reBcpvu29bGWGRsmf89uMg3EbwVUSCVQ2ZwjMt1"
+        ports:
+        - containerPort: 80
+          #hostPort: 30031
+        - containerPort: 5000
+          #hostPort: 30500
+        imagePullPolicy: "Always"
+        volumeMounts:
+        - mountPath: /workspace/
+          name: code
+      volumes:
+        - name: code
+          hostPath:
+            path: /autoshift-web
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autoshift-config-db
+  namespace: autoshift
+spec:
+  type: NodePort
+  ports:
+
+  - port: 3306
+    targetPort: 3306
+    protocol: TCP
+    name: autoshift-config-db-pod
+  selector:
+    name: autoshift-config-db-pod
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: autoshift-config-db
+  namespace: autoshift
+spec:
+  replicas: 1
+  selector:
+    name: autoshift-config-db-pod
+  template:
+    metadata:
+      name: autoshift-config-db-pod
+      labels:
+        name: autoshift-config-db-pod
+    spec:
+      restartPolicy: Always
+      nodeSelector:
+        stack: autoshift
+      containers:
+      - name: autoshift-config-db
+        image: 10.119.63.231:5002/autoshift/mysql5:latest 
+        env:
+        - name: "MYSQL_ROOT_PASSWORD"
+          value: "root"
+        ports:
+        - containerPort: 3306
+        imagePullPolicy: "Always"
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: mysql-persistent-storage
+      volumes:
+        - name: mysql-persistent-storage
+          hostPath:
+            path: /autoshift-autoshift-config-db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: influxdb
+  namespace: autoshift
+spec:
+  type: NodePort
+  ports:
+  - port: 8083
+    targetPort: 8083
+    nodePort: 30035
+    protocol: TCP
+    name: http
+  - port: 8086
+    targetPort: 8086
+    nodePort: 30086
+    protocol: TCP
+    name: api
+  selector:
+    name: influxdb-pod
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: influxdb
+  namespace: autoshift
+spec:
+  replicas: 1
+  selector:
+    name: influxdb-pod
+  template:
+    metadata:
+      name: influxdb-pod
+      labels:
+        name: influxdb-pod
+    spec:
+      restartPolicy: Always
+      nodeSelector:
+        stack: autoshift
+      containers:
+      - name: influxdb
+        image: 10.119.63.231:5002/influxdb:1.2-alpine
+        env:
+        - name: "INFLUXDB_ADMIN_BIND_ADDRESS"
+          value: ":8083"
+        - name: "INFLUXDB_ADMIN_ENABLED"
+          value: "true"
+        ports:
+        - containerPort: 8083
+          hostPort: 8083
+        - containerPort: 8086
+          hostPort: 8086
+        imagePullPolicy: "Always"
+        volumeMounts:
+        - mountPath: /var/lib/influxdb/
+          name: data
+      volumes:
+        - emptyDir: {}
+          name: data
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  labels:
+    app: kafka
+  name: kafka
+  namespace: autoshift
+spec:
+  replicas: 1
+  selector:
+    app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      containers:
+      - command:
+        - /bin/sh
+        - -c
+        - KAFKA_ADVERTISED_HOST_NAME=kafka.$NAMESPACE start-kafka.sh
+        env:
+        - name: KAFKA_PORT
+          value: "9092"
+        - name: KAFKA_ADVERTISED_PORT
+          value: "9092"
+        - name: KAFKA_ZOOKEEPER_CONNECT
+          value: zookeeper:2181
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        image: 10.119.63.231:5002/wurstmeister/kafka
+        imagePullPolicy: Always
+        name: kafka
+        ports:
+        - containerPort: 9092
+          protocol: TCP
+        - containerPort: 2181
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /data
+          name: data
+      nodeSelector:
+        stack: kafka 
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - emptyDir: {}
+        name: data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: kafka
+  name: kafka
+  namespace: autoshift
+spec:
+  ports:
+  - name: kafka-port
+    nodePort: 30092
+    port: 9092
+    protocol: TCP
+    targetPort: 9092
+  - name: zk-port
+    port: 2181
+    protocol: TCP
+    targetPort: 2181
+  selector:
+    app: kafka
+  type: NodePort
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: zookeeper
+  name: zookeeper
+  namespace: autoshift
+spec:
+  ports:
+  - name: zookeeper-port
+    nodePort: 30281
+    port: 2181
+    protocol: TCP
+    targetPort: 2181
+  selector:
+    app: zookeeper
+  type: NodePort
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  labels:
+    app: zookeeper
+  name: zk
+  namespace: autoshift
+spec:
+  replicas: 1
+  selector:
+    app: zookeeper
+  template:
+    metadata:
+      labels:
+        app: zookeeper
+    spec:
+      containers:
+      - image: 10.119.63.231:5002/zookeeper
+        imagePullPolicy: Always
+        name: zookeeper
+        ports:
+        - containerPort: 2181
+          name: client
+          protocol: TCP
+        - containerPort: 2888
+          name: peer
+          protocol: TCP
+        - containerPort: 3888
+          name: election
+          protocol: TCP
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        stack: kafka
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  type: NodePort
+  ports:
+  - port: 6379
+    name: redis-port
+    targetPort: 6379
+    nodePort: 30379
+    protocol: TCP
+  selector:
+    app: redis
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: redis 
+spec:
+  replicas: 1
+  selector:
+    app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: 10.119.63.231:5002/redis
+        ports:
+          - containerPort: 6379
+            name: client
+            protocol: TCP
+---
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: redis-commander
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: redis-commander
+        tier: frontend
+    spec:
+      imagePullSecrets:
+      - name: "dockerhub.registry"
+      containers:
+      - name: redis-commander
+        image: 10.119.63.231:5002/tenstartups/redis-commander
+        imagePullPolicy: Always  # IfNotPresent
+        command: ["redis-commander"]
+        args: ["--redis-host", "redis"]
+        ports:
+        - containerPort: 8081
+          protocol: TCP
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: redis-commander
+  labels:
+    app: redis-commander
+    role: utility
+    tier: frontend
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 8081
+    nodePort: 30081
+    protocol: TCP
+  selector:
+    app: redis-commander

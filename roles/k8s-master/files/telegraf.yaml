@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dockerhub.registry
+data:
+  .dockerconfigjson: eyAiYXV0aHMiOiB7ICJodHRwczovL2luZGV4LmRvY2tlci5pby92MS8iOiB7ICJhdXRoIjogIlltbHNiSGw2YUdGdVp6SXdNVEE2U0ZkNmFEZ3lPREl4UUE9PSIgfSB9IH0K
+type: kubernetes.io/dockerconfigjson
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: telegraf-stat
+spec:
+  replicas: 1
+  selector:
+    name: telegraf-pod-stat
+  template:
+    metadata:
+     name: telegraf-pod-stat
+     labels:
+       name: telegraf-pod-stat
+    spec:
+      restartPolicy: Always
+      imagePullSecrets:
+      - name: "dockerhub.registry"
+      nodeSelector:
+        stack: autoshift
+      containers:
+      - name: telegraf
+        image: autoshift/telegraf_aggregator:v1
+        volumeMounts:
+        - mountPath: /etc/telegraf
+          name: config
+        imagePullPolicy: "Always"
+      volumes:
+        - name: config
+          configMap:
+            name: telegraf-statistics-config
+            items:
+            - key: telegraf-statistics.conf
+              path: telegraf.conf
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: docker
+          hostPath:
+            path: /var/run/docker.sock
+---
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: telegraf-diff-user1
+spec:
+  #replicas: 1
+  #selector:
+  #  name: telegraf-pod-diff
+  template:
+    metadata:
+     name: telegraf-pod-diff
+     labels:
+       name: telegraf-pod-diff
+    spec:
+      restartPolicy: Always
+      imagePullSecrets:
+      - name: "dockerhub.registry"
+      nodeSelector:
+        stack: app
+      containers:
+      - name: telegraf
+        image: autoshift/telegraf_aggregator:v1
+        env:
+        - name: "HOST_PROC"
+          value: "/rootfs/proc"
+        - name: "HOST_SYS"
+          value: "/rootfs/sys"
+        volumeMounts:
+        - mountPath: /rootfs/sys
+          name: sys
+          readOnly: true
+        - mountPath: /rootfs/proc
+          name: proc
+          readOnly: true
+        - mountPath: /var/run/docker.sock
+          name: docker
+          readOnly: true
+        - mountPath: /etc/telegraf
+          name: config
+        imagePullPolicy: "Always"
+      volumes:
+        - name: config
+          configMap:
+            name: telegraf-differentiate-config
+            items:
+            - key:  telegraf-differentiate.conf
+              path: telegraf.conf
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: docker
+          hostPath:
+            path: /var/run/docker.sock
+

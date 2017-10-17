@@ -1,0 +1,343 @@
+---
+- name: Config apt proxy
+  template: 
+    src: templates/01proxy.j2
+    dest: /etc/apt/apt.conf.d/01proxy
+    owner: root
+    group: root
+  tags:
+    - apt
+
+- name: config ntp
+  copy:
+    src: files/ntp.conf
+    dest: /etc/ntp.conf
+    owner: root
+    group: root
+  tags:
+    - ntp
+
+#- name: restart ntp
+#  shell: systemctl restart ntp
+
+- name: Basic tools setup
+  apt: 
+    name: "{{ item }}"
+    state: present
+    update_cache: yes
+  with_items:
+#    - software-properties-common
+#    - apt-transport-https
+#    - bridge-utils
+    - nfs-common
+#    - aufs-tools
+#    - openvpn
+#    - nmon
+#    - tree
+#    - mtr
+  sudo: true
+  tags: 
+    - basic
+
+- name: Setup bash
+  copy:
+    src: files/.bash_aliases
+    dest: ~/.bash_aliases
+    owner: root
+    group: root
+    mode: 0700
+  tags: 
+    - basic
+
+- name: Setup bash
+  lineinfile:
+    path: ~/.bashrc
+    line: 'export KUBECONFIG=/etc/kubernetes/admin.conf'
+    state: present
+#- name: Config openvpn
+#  copy:
+#    src: files/vagrant/openvpn
+#    dest: /etc/openvpn
+#    owner: root
+#    group: root
+#    mode: 0700
+#  tags:
+#    - openvpn
+#
+#- name: Start openvpn
+#  shell: openvpn --cd /etc/openvpn --daemon --config /etc/openvpn/client.conf
+#  tags:
+#    - openvpn
+
+- name: Config certificate
+  become: yes
+  stat:
+    path: /etc/ssl/certs/ca-certificates.crt
+  register: certfile
+  tags: 
+    - cert
+
+- name: Config certificate
+  blockinfile:
+    block: "{{ lookup('file', 'files/ca-certificates.crt') }}"
+    dest: /etc/ssl/certs/ca-certificates.crt
+  when: certfile.stat.exists == True
+  tags:
+    - cert
+
+- name: Config certificate
+  copy:
+    src: files/ca-certificates.crt
+    dest: /etc/ssl/certs/ca-certificates.crt
+    mode: 0644
+  when: certfile.stat.exists == False
+  tags: 
+    - cert
+
+- shell: ls -1 /var/cache/apt/archives
+  register: contents
+
+- shell: mount | grep /var/cache/apt/archives | awk '{print $1}'
+  register: mounts
+
+- name: Clean apt cache if not mounted
+  file: path=/var/cache/apt/archives{{ item }} state=absent
+  with_items: contents.stdout_lines
+  when: mounts.stdout != "100.120.249.57:/var/cache/apt/archives"
+
+- name: Mount apt cache if not mounted
+  command: mount 100.120.249.57:/var/cache/apt/archives /var/cache/apt/archives
+  when: mounts.stdout != "100.120.249.57:/var/cache/apt/archives"
+
+#- name: Import key for docker
+#  apt_key:
+#    keyserver: hkp://p80.pool.sks-keyservers.net:80
+#    id: 58118E89F3A912897C070ADBF76221572C52609D
+#    state: present
+#  tags: docker
+#
+#- name: Ensure Docker Repo
+#  apt_repository: 
+#    repo: "{{ apt_docker_repo }}"
+#    state: present
+#  tags: 
+#    - docker
+#
+#- name: Install docker
+#  apt: 
+#    name: docker.io
+#    state: present
+#    update_cache: yes
+#  sudo: true
+#  tags: 
+#   - docker
+
+- name: Install docker depends
+  become: yes
+  apt:
+    deb: "/var/cache/apt/archives/{{ item }}"
+    state: present
+  with_items:
+    - runc_1.0.0~rc2-0ubuntu2~16.04.1_amd64.deb
+    - containerd_0.2.5-0ubuntu1~16.04.1_amd64.deb
+  tags:
+    - docker
+
+- name: Install docker
+  become: yes
+  apt:
+    deb: "/var/cache/apt/archives/{{ item }}"
+    state: present
+    update_cache: yes
+  with_items:
+    - docker.io_1.12.6-0ubuntu1~16.04.1_amd64.deb
+  tags:
+    - docker
+
+- name: Ensure docker dir
+  become: yes
+  file:
+    path: /etc/systemd/system/docker.service.d
+    state: directory
+
+- name: Config docker proxy
+  template:
+    src: templates/http-proxy.conf.j2
+    dest: /etc/systemd/system/docker.service.d/http-proxy.conf
+    owner: root
+    group: root
+    mode: 0700
+  tags:
+    - docker_proxy
+
+- name: Config docker insecure registry
+  lineinfile:
+    dest: /etc/default/docker
+    line: DOCKER_OPTS="--insecure-registry=10.119.63.231:5002"
+    state: present
+  tags: 
+    - docker
+
+- name: Daemon reload
+  command: systemctl daemon-reload
+
+- name: Restart docker
+  command: systemctl restart docker
+
+#- name: Ensure Google Cloud Apt Key
+#  become: yes
+#  apt_key:
+#    url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+#    state: present
+#  environment: "{{ proxy_env }}"
+#  tags:
+#    - k8s
+
+#- name: Ensure Kubernetes Repo
+#  become: yes
+#  apt_repository:
+#    repo: "{{ apt_kube_repo }}"
+#    state: present
+#    update_cache: yes
+#  environment: "{{ proxy_env }}"
+#  tags:
+#    - k8s
+
+- name: Install Kubernetes depends
+  become: yes
+  apt:
+    deb: "/var/cache/apt/archives/{{ item }}_amd64.deb"
+    state: present
+  with_items:
+    - ebtables_2.0.10.4-3.4ubuntu1
+    - socat_1.7.3.1-1
+  tags: 
+    - k8s
+
+- name: Install Kubernetes components
+  become: yes
+  apt:
+    deb: "/var/cache/apt/archives/{{ item }}-00_amd64.deb"
+    state: present
+    update_cache: yes
+  with_items:
+    - kubernetes-cni_0.5.1
+    - kubelet_1.6.2
+    - kubectl_1.6.2
+    - kubeadm_1.6.2
+  tags:
+    - k8s
+
+- name: Umount to release disk space
+  become: yes
+  shell: umount /var/cache/apt/archives
+
+- name: Config kubelet if kubenet
+  become: yes
+  copy:
+    src: files/50-kubenet.conf
+    dest: /etc/systemd/system/kubelet.service.d/
+  when: (not flannel) and (not weave)
+
+- name: mkdir /etc/cni/net.d/
+  become: yes
+  shell: mkdir -p /etc/cni/net.d/
+
+- name: Delete cni config if kubenet
+  file:
+    path: /etc/cni/net.d/10-flannel.conf
+    state: absent
+  when: (not flannel) and (not weave)
+
+- name: Delete cni config if kubenet
+  file:
+    path: /etc/cni/net.d/10-weave.conf
+    state: absent
+  when: (not flannel) and (not weave)
+
+#- name: Ensure cni config file
+#  become: yes
+#  copy:
+#    src: files/10-flannel.conf
+#    dest: /etc/cni/net.d/
+#  when:  flannel
+#  tags:
+#    - k8s
+#
+
+- name: Config kube cluster DNS
+  shell: sed -i "s/--cluster-dns=10.96.0.10/--cluster-dns=11.96.0.10/g;" /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+  tags:
+    - k8s
+
+- name: Pull images
+  shell: docker pull {{ docker_registry }}{{ item }}
+  with_items:
+    - "{{ images }}"
+    - "{{ flannel_image }}"
+    - "{{ weave_image }}"
+  tags: 
+    pull_images
+
+- name: Tag images
+  shell: docker tag {{ docker_registry }}{{ item }} "gcr.io/google_containers/"{{ item }}
+  with_items:
+    - "{{ images }}"
+  tags: 
+    pull_images
+
+- name: Tag image
+  shell: docker tag {{ docker_registry }}{{ item }} "weaveworks/"{{ item }}
+  with_items:
+    - "{{ weave_image }}"
+  when: weave
+  tags:
+    pull_images
+
+- name: Tag image
+  shell: docker tag {{ docker_registry }}{{ item }} "quay.io/coreos/"{{ item }}
+  with_items:
+    - "{{ flannel_image }}"
+  when: flannel
+  tags:
+    pull_images
+
+- name: Remove useless images
+  shell: docker rmi {{ docker_registry }}{{ item }}
+  with_items:
+    - "{{ images }}"
+    - "{{ flannel_image }}"
+    - "{{ weave_image }}"
+  tags: 
+    pull_images
+
+- name: Unset proxy
+  become: yes
+  lineinfile:
+    dest: /etc/environment
+    state: absent
+    regexp: '^{{ item }}'
+  with_items:
+    - http_proxy
+    - https_proxy
+    - ftp_proxy
+    - HTTP_PROXY
+    - HTTPS_PROXY
+    - FTP_PROXY
+
+- name: Delete set proxy file
+  file:
+    path: /etc/profile.d/proxy.sh
+    state: absent
+
+- name: Unset proxy
+  become: yes
+  shell: unset "{{ item }}"
+  with_items:
+    - http_proxy
+    - https_proxy
+    - ftp_proxy
+    - HTTP_PROXY
+    - HTTPS_PROXY
+    - FTP_PROXY
+

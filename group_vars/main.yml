@@ -1,0 +1,60 @@
+---
+# pass to jinja2 template to configure vm apt and docker proxy
+http_proxy: http://100.120.233.129:3128
+https_proxy: https://100.120.233.129:3128
+
+pod_network_cidr: 12.12.0.0/16
+service_cidr: 11.96.0.0/12
+weave: false
+flannel: false 
+
+# configure to docker for loacl registry where all the images come from
+docker_registry: 10.119.63.231:5002/
+apt_docker_repo: deb https://apt.dockerproject.org/repo ubuntu-xenial main
+apt_kube_repo: deb http://apt.kubernetes.io/ kubernetes-xenial main
+
+# kubernetes version
+# now the version is fixed, if need to change, further dev witll be required
+kube_version: v1.6.2
+kube_token: 2f1a31.00f66dec74fd53f3
+# kube master hostname, not passed in yet now
+# will be passed later along with variables in Vagrantfile
+kube_master: master
+# now passed in command or sheel script when kubeadm init
+# or when kubeadm join running on node
+# will be passed along with vagrant file later
+kube_master_ip: 192.168.16.110
+# now only passed in docker no_proxy, can be inited with kube_master_ip
+# will be passed together with Vagrant or maybe deleted
+kube_ips: 192.168.16.*
+# not passed in yes, reserved for further development
+kube_node_num: 3
+
+images: 
+ - kube-proxy-amd64:{{ kube_version }}
+ - kube-scheduler-amd64:{{ kube_version }}
+ - kube-controller-manager-amd64:{{ kube_version }}
+ - kube-apiserver-amd64:{{ kube_version }}
+# the version of the images will be modified
+# if need to change version of kubernetes
+# and maybe not required if everything come from internet not local
+ - etcd-amd64:3.0.17
+ - pause-amd64:3.0
+ - k8s-dns-kube-dns-amd64:1.14.1
+ - k8s-dns-dnsmasq-nanny-amd64:1.14.1
+ - k8s-dns-sidecar-amd64:1.14.1
+ - kubernetes-dashboard-amd64:v1.5.0
+
+flannel_image:
+ - flannel:v0.7.1-amd64
+
+weave_image:
+ - weave-kube:1.9.4
+ - weave-npc:1.9.4
+
+kube_resource_files:
+ - kube-flannel-rbac.yml
+ - kube-flannel.yml
+ - autoshift-components.yml
+
+

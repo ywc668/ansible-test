@@ -1,0 +1,122 @@
+---
+- name: Unset proxy
+  become: yes
+  lineinfile:
+    dest: /etc/environment
+    state: absent
+    regexp: '^{{ item }}'
+  with_items:
+    - http_proxy
+    - https_proxy
+    - ftp_proxy
+    - HTTP_PROXY
+    - HTTPS_PROXY
+    - FTP_PROXY
+
+- name: Delete set proxy file
+  file:
+    path: /etc/profile.d/proxy.sh
+    state: absent
+
+- name: Unset proxy
+  become: yes
+  shell: unset "{{ item }}"
+  with_items:
+    - http_proxy
+    - https_proxy
+    - ftp_proxy
+    - HTTP_PROXY
+    - HTTPS_PROXY
+    - FTP_PROXY
+
+- name: Clean before init kube
+  become: yes
+  shell: kubeadm reset
+
+- name: Daemon reload
+  become: yes
+  shell: systemctl daemon-reload
+
+- name: Restart kubelet
+  become: yes
+  shell: systemctl restart kubelet
+
+- name: Ensure cni config file
+  become: yes
+  copy: 
+    src: files/10-weave.conf
+    dest: /etc/cni/net.d/
+  when: weave
+  tags: 
+    - k8s
+
+- name: Ensure cni config file
+  become: yes
+  copy: 
+    src: files/10-flannel.conf
+    dest: /etc/cni/net.d/
+  when:  flannel
+  tags: 
+    - k8s
+
+- name: Ensure kubeadm initialization
+  become: yes
+  command: "kubeadm init --token {{ kube_token }} --apiserver-advertise-address={{ kube_master_ip }} --kubernetes-version={{ kube_version }} --pod-network-cidr={{ pod_network_cidr }} --service-cidr={{ service_cidr }}"
+  when:  not weave
+  tags:
+    - k8s
+
+- name: Ensure kubeadm initialization
+  become: yes
+  command: "kubeadm init --token {{ kube_token }} --apiserver-advertise-address={{ kube_master_ip }} --kubernetes-version={{ kube_version }} --service-cidr={{ service_cidr }}"
+  when:  weave
+  tags:
+    - k8s
+
+- name: Ensure resource files
+  become: yes
+  copy: 
+    src: files/
+    dest: /home/root/
+    mode: 0700
+  tags:
+    - k8s
+
+- name: Config iptables
+  copy:
+    src: files/iptables-export-1
+    dest: /iptables-export-1
+
+- name: Config iptables
+  shell: iptables-restore < /iptables-export-1
+
+- name: Export kubeconfig
+  become: yes
+  shell: export KUBECONFIG=/etc/kubernetes/admin.conf
+
+- name: Config pod network weave
+  become: yes
+  shell: KUBECONFIG=/etc/kubernetes/admin.conf kubectl create -f /home/root/kube-weave.yml
+  when: weave
+  tags:
+    - weave
+
+- name: Config pod network flannel rbac
+  become: yes
+  shell: KUBECONFIG=/etc/kubernetes/admin.conf kubectl create -f /home/root/kube-flannel-rbac.yml
+  when: flannel
+  tags:
+    - flannel
+
+- name: Start pod network flannel
+  become: yes
+  shell: KUBECONFIG=/etc/kubernetes/admin.conf kubectl create -f /home/root/kube-flannel.yml
+  when: flannel
+  tags: 
+    - flannel
+
+- name: Start kube dashboard
+  become: yes
+  shell: KUBECONFIG=/etc/kubernetes/admin.conf kubectl create -f /home/root/kube-dashboard.yml
+  tags: 
+    - dashboard

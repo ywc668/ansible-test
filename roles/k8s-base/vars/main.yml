@@ -1,0 +1,6 @@
+---
+proxy_env:
+  http_proxy: http://100.120.233.129:3128
+
+apt-docker-repo: 'deb https://apt.dockerproject.org/repo ubuntu-xenial main'
+apt-kube-repo: 'deb https://apt.dockerproject.org/repo ubuntu-xenial main'

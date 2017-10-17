@@ -1,0 +1,46 @@
+---
+#- name: Stop apparmor
+#  become: yes
+#  shell: /etc/init.d/apparmor stop
+#
+#- name: Disable apparmor
+#  become: yes
+#  shell: /etc/init.d/apparmor teardown
+
+- name: Clean before join
+  become: yes
+  shell: kubeadm reset
+
+- name: Daemon reload
+  become: yes
+  shell: systemctl daemon-reload
+
+- name: Restart kubelet
+  become: yes
+  shell: systemctl restart kubelet
+
+- name: Ensure cni config file
+  become: yes
+  copy:
+    src: files/10-flannel.conf
+    dest: /etc/cni/net.d/
+  when: flannel
+  tags:
+    - k8s
+
+- name: Ensure cni config file
+  become: yes
+  copy:
+    src: files/10-weave.conf
+    dest: /etc/cni/net.d/
+  when: weave
+  tags:
+    - k8s
+
+- name: Join Kubernetes Cluster
+  become: yes
+  command: "kubeadm join --token 2f1a31.00f66dec74fd53f3 {{ kube_master_ip }}:6443"
+
+#- name: Start apparmor
+#  become: yes
+#  shell: /etc/init.d/apparmor start

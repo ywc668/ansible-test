@@ -1,0 +1,41 @@
+---
+- name: Read node names
+  become: yes
+  shell: KUBECONFIG=/etc/kubernetes/admin.conf kubectl get nodes | awk '{print $1}'
+  register: nodes
+
+- name: Label node
+  become: yes
+  shell: KUBECONFIG=/etc/kubernetes/admin.conf kubectl label node {{ nodes.stdout_lines[2] }} stack=autoshift
+
+- name: Label node
+  become: yes
+  shell: KUBECONFIG=/etc/kubernetes/admin.conf kubectl label node {{ nodes.stdout_lines[3] }} stack=kafka
+
+- name: Untaint master
+  become: yes
+  shell: KUBECONFIG=/etc/kubernetes/admin.conf kubectl taint node {{ nodes.stdout_lines[1] }} node-role.kubernetes.io/master-
+
+- name: Start heapster
+  become: yes
+  shell: KUBECONFIG=/etc/kubernetes/admin.conf kubectl create -f /home/root/heapster.yaml
+  tags:
+    - heapster
+
+#- name: Deploy autoshift components
+#  become: yes
+#  shell: KUBECONFIG=/etc/kubernetes/admin.conf kubectl create -f /home/root/autoshift-components.yml
+#  tags: 
+#    - autoshift
+
+#- name: Produce cert file
+#  become: yes
+#  shell: cd /home/root && chmod +x *.sh && ./insert_db_data.sh
+#  tags: 
+#    - ingress
+#
+#- name: Deploy auto-remediator
+#  become: yes
+#  script: /home/root/deploy_remediator.sh
+#  tags: 
+#    - remediator

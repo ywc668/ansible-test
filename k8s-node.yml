@@ -1,0 +1,8 @@
+- hosts: nodes
+  remote_user: root
+  serial: 1
+  roles:
+    - k8s-base
+    - k8s-worker
+  vars_files:
+    - group_vars/main.yml
